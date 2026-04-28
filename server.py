@@ -22,8 +22,8 @@ from pydub import AudioSegment
 import httpx
 
 # ──────────────────────────── CONFIG ────────────────────────────────────────
-API_KEY          = os.getenv("MURF_KEY", "")
-GEMINI_KEY       = os.getenv("GEMINI_KEY", "")
+API_KEY          = os.getenv("MURF_KEY", "").strip()
+GEMINI_KEY       = os.getenv("GEMINI_KEY", "").strip()
 HTTP_TIMEOUT     = 180
 MAX_RETRIES      = 3
 BACKOFF_SECS     = 2
@@ -270,7 +270,8 @@ def translate_file():
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 def gemini_chat(message: str, history: list) -> str:
-    """Send message + history to Gemini and return the AI reply."""
+    """Send message + history to Gemini and return the AI reply.
+    Retries up to 3 times on 429 rate-limit errors."""
     # Build conversation contents from history
     contents = []
     for h in history[-10:]:  # keep last 10 turns to stay within limits
@@ -293,16 +294,23 @@ def gemini_chat(message: str, history: list) -> str:
         }
     }
 
-    with httpx.Client(timeout=30) as client:
-        resp = client.post(
-            GEMINI_URL,
-            params={"key": GEMINI_KEY},
-            json=payload,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    last_err = None
+    for attempt in range(1, 4):
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(
+                GEMINI_URL,
+                params={"key": GEMINI_KEY},
+                json=payload,
+            )
+            if resp.status_code == 429:
+                last_err = resp.text
+                time.sleep(2 ** attempt)  # 2s, 4s, 8s backoff
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
 
-    return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    raise RuntimeError(f"Gemini rate-limited after 3 retries. Try again in a minute. Details: {last_err[:200]}")
 
 
 @app.route("/api/translate-chat", methods=["POST"])
