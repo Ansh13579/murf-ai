@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: murf-ai-suite
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 300 server:app
+    envVars:
+      - key: MURF_KEY
+        sync: false
+      - key: FLASK_DEBUG
+        value: "0"
+    autoDeploy: true
+    plan: free
+    buildFilter:
+      paths:
+        - "**/*"

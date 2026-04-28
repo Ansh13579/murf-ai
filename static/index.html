@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Murf AI Suite — Translate &amp; Speak Any Language</title>
+  <meta name="description" content="Translate text files and chat messages into any language with Murf AI. Get natural-sounding speech synthesis powered by Murf's TTS engine.">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙</text></svg>">
+</head>
+<body>
+
+<!-- ═══ Navbar ═══════════════════════════════════════════════════════════ -->
+<nav class="navbar" id="navbar">
+  <div class="container">
+    <a href="#" class="navbar-brand">
+      <span class="logo-icon">🎙</span>
+      <span>Murf AI Suite</span>
+    </a>
+    <div class="navbar-links">
+      <a href="#features">Features</a>
+      <a href="#app">App</a>
+      <a href="https://murf.ai/docs" target="_blank">Docs</a>
+      <a href="#app" class="nav-cta">Get Started</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ═══ Hero ═════════════════════════════════════════════════════════════ -->
+<section class="hero" id="hero">
+  <div class="container">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Powered by Murf AI API
+    </div>
+    <h1>Translate &amp; Speak<br><span class="gradient">Any Language Instantly</span></h1>
+    <p>Upload text files or chat in real-time — get natural translations and studio-quality speech synthesis in Hindi, English, French, and German.</p>
+    <div class="hero-actions">
+      <a href="#app" class="btn btn-primary">🎙️ Start Translating</a>
+      <a href="#features" class="btn btn-secondary">Explore Features</a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ Features ═════════════════════════════════════════════════════════ -->
+<section class="features" id="features">
+  <div class="container">
+    <div class="section-label">Capabilities</div>
+    <h2 class="section-title">Everything You Need</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📄</div>
+        <h3>File Translation</h3>
+        <p>Upload any .txt file and translate every line while preserving the original order and structure.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔊</div>
+        <h3>Speech Synthesis</h3>
+        <p>Convert translated text to natural-sounding speech using Murf's premium AI voices.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">💬</div>
+        <h3>Live Chat</h3>
+        <p>Type messages and get instant translations with audio playback in real-time.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌐</div>
+        <h3>Multi-Language</h3>
+        <p>Support for Hindi, English, French, and German with 8 premium voices across all locales.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎵</div>
+        <h3>Audio Merging</h3>
+        <p>Auto-chunks large text, synthesises each part, and merges into a single seamless MP3 narration.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Retry &amp; Reliability</h3>
+        <p>Built-in retry logic with exponential backoff handles API hiccups so you don't have to.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ App ══════════════════════════════════════════════════════════════ -->
+<section class="app-section" id="app">
+  <div class="container">
+    <div class="section-label">Application</div>
+    <h2 class="section-title">Try It Now</h2>
+    <div class="app-wrapper">
+
+      <!-- Tab bar -->
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="file-tab" id="tab-file-btn">📄 File → Speech</button>
+        <button class="tab-btn" data-tab="chat-tab" id="tab-chat-btn">💬 Chat Translator</button>
+      </div>
+
+      <!-- ─── Tab 1: File → Speech ─── -->
+      <div class="tab-content active" id="file-tab">
+        <div class="drop-zone" id="drop-zone">
+          <input type="file" accept=".txt" id="file-input">
+          <div class="drop-zone-icon">📁</div>
+          <div class="drop-zone-text">
+            <strong>Click or drag</strong> a .txt file here
+          </div>
+          <div class="file-name" id="file-name"></div>
+        </div>
+
+        <div class="form-row" style="margin-top:20px">
+          <div class="form-group">
+            <label class="form-label" for="file-target-lang">Translate To</label>
+            <select class="form-select" id="file-target-lang"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="file-voice">Voice</label>
+            <select class="form-select" id="file-voice"></select>
+          </div>
+        </div>
+
+        <button class="action-btn" id="file-submit" disabled>
+          <span class="btn-label">🎙️ Translate &amp; Speak</span>
+          <span class="spinner"></span>
+        </button>
+
+        <div class="result-panel" id="file-result">
+          <div class="result-header">
+            <h3>✅ Translation Complete</h3>
+            <span class="result-badge" id="file-seg-count"></span>
+          </div>
+          <div class="result-text" id="file-translated-text"></div>
+          <audio controls class="audio-player" id="file-audio"></audio>
+        </div>
+      </div>
+
+      <!-- ─── Tab 2: Chat ─── -->
+      <div class="tab-content" id="chat-tab">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="chat-target-lang">Translate To</label>
+            <select class="form-select" id="chat-target-lang"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="chat-voice">Voice</label>
+            <select class="form-select" id="chat-voice"></select>
+          </div>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-empty" id="chat-empty">
+            <div class="chat-empty-icon">💬</div>
+            <p>Start a conversation.<br>Type a message below to translate &amp; hear it.</p>
+          </div>
+        </div>
+
+        <div class="chat-input-row">
+          <input type="text" class="chat-input" id="chat-input" placeholder="Type a message, press Enter…" autocomplete="off">
+          <button class="chat-send" id="chat-send">
+            <span class="btn-label">Send</span>
+            <span class="spinner"></span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══ Footer ═══════════════════════════════════════════════════════════ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">🎙 Murf AI Suite</div>
+      <div class="footer-links">
+        <a href="https://murf.ai" target="_blank">Murf.ai</a>
+        <a href="https://murf.ai/docs" target="_blank">API Docs</a>
+        <a href="https://github.com/Ansh13579/murf-ai" target="_blank">GitHub</a>
+      </div>
+    </div>
+    <div class="footer-copy">&copy; 2026 Murf AI Suite. Built with the Murf Translation &amp; TTS API.</div>
+  </div>
+</footer>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<!-- Hidden audio for chat playback -->
+<audio id="chat-audio-player" style="display:none"></audio>
+
+<script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.mp3
+/tmp/
+murf_*/
+.DS_Store

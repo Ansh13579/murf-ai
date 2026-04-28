@@ -1,0 +1,8 @@
+flask>=3.0
+flask-cors>=4.0
+murf
+pydub>=0.25
+httpx>=0.27
+python-dotenv>=1.0
+gunicorn>=21.2
+audioop-lts>=0.2
