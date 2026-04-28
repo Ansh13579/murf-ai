@@ -164,6 +164,7 @@ audio{width:100%;height:48px;border-radius:var(--radius-sm)}
 .chat-bubble.user{align-self:flex-end;background:linear-gradient(135deg,var(--accent-1),var(--accent-2));color:#fff;border-bottom-right-radius:4px}
 .chat-bubble.bot{align-self:flex-start;background:var(--bg-secondary);border:1px solid var(--border-glass);border-bottom-left-radius:4px}
 .chat-bubble .bubble-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;opacity:.6;margin-bottom:4px;font-weight:600}
+.chat-bubble .bubble-divider{height:1px;background:rgba(255,255,255,.1);margin:10px 0 8px}
 .chat-bubble.bot .audio-link{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:6px 14px;
   border-radius:99px;background:rgba(124,58,237,.15);color:var(--accent-1);font-size:.8rem;font-weight:600;cursor:pointer;transition:var(--transition)}
 .chat-bubble.bot .audio-link:hover{background:rgba(124,58,237,.25)}

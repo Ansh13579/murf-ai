@@ -40,8 +40,9 @@ const chatAudio     = $("#chat-audio-player");
 const toastEl = $("#toast");
 
 // ── State ──────────────────────────────────────────────────────────────────
-let selectedFile = null;
-let chatBusy     = false;
+let selectedFile  = null;
+let chatBusy      = false;
+let chatHistory   = [];  // {user, bot} pairs for Gemini context
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  INIT — fetch voices & populate dropdowns
@@ -196,14 +197,18 @@ async function sendChat() {
         message:     msg,
         target_lang: chatTargetDD.value,
         voice:       chatVoiceDD.value,
+        history:     chatHistory,
       }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Unknown error");
 
-    addBubble("bot", data.translated, data.audio_url);
+    // Save to history for Gemini context
+    chatHistory.push({ user: msg, bot: data.ai_reply || data.translated });
+
+    addBotBubble(data.ai_reply, data.translated, data.audio_url);
   } catch (e) {
-    addBubble("bot", `❌ ${e.message}`);
+    addBubble("bot", `Error: ${e.message}`);
     toast(`Error: ${e.message}`, "error");
   } finally {
     chatBusy = false;
@@ -212,23 +217,59 @@ async function sendChat() {
   }
 }
 
-function addBubble(type, text, audioUrl) {
+function addBubble(type, text) {
   const bubble = document.createElement("div");
   bubble.className = `chat-bubble ${type}`;
 
   const label = document.createElement("div");
   label.className = "bubble-label";
-  label.textContent = type === "user" ? "You" : "Translation";
+  label.textContent = type === "user" ? "You" : "AI";
   bubble.appendChild(label);
 
   const content = document.createElement("div");
   content.textContent = text;
   bubble.appendChild(content);
 
-  if (type === "bot" && audioUrl) {
+  chatMessages.appendChild(bubble);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function addBotBubble(aiReply, translated, audioUrl) {
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble bot";
+
+  // AI reply (English)
+  const aiLabel = document.createElement("div");
+  aiLabel.className = "bubble-label";
+  aiLabel.textContent = "AI Reply";
+  bubble.appendChild(aiLabel);
+
+  const aiText = document.createElement("div");
+  aiText.textContent = aiReply || translated;
+  bubble.appendChild(aiText);
+
+  // Translated text (if different from AI reply)
+  if (translated && translated !== aiReply) {
+    const divider = document.createElement("div");
+    divider.className = "bubble-divider";
+    bubble.appendChild(divider);
+
+    const trLabel = document.createElement("div");
+    trLabel.className = "bubble-label";
+    trLabel.textContent = "Translation";
+    bubble.appendChild(trLabel);
+
+    const trText = document.createElement("div");
+    trText.style.opacity = "0.85";
+    trText.textContent = translated;
+    bubble.appendChild(trText);
+  }
+
+  // Play audio button
+  if (audioUrl) {
     const playBtn = document.createElement("span");
     playBtn.className = "audio-link";
-    playBtn.innerHTML = "🔊 Play Audio";
+    playBtn.innerHTML = "\uD83D\uDD0A Play Audio";
     playBtn.addEventListener("click", () => {
       chatAudio.src = audioUrl;
       chatAudio.play();

@@ -9,7 +9,7 @@ Endpoints:
     GET  /api/health          → { "status": "ok" }
     GET  /api/voices          → available locales & voices
     POST /api/translate-file  → upload .txt, get translated text + merged MP3
-    POST /api/translate-chat  → single message → translated text + TTS audio URL
+    POST /api/translate-chat  → single message → Gemini AI reply → translate + TTS
 """
 
 import os, pathlib, tempfile, time, json, base64
@@ -23,6 +23,7 @@ import httpx
 
 # ──────────────────────────── CONFIG ────────────────────────────────────────
 API_KEY          = os.getenv("MURF_KEY", "")
+GEMINI_KEY       = os.getenv("GEMINI_KEY", "")
 HTTP_TIMEOUT     = 180
 MAX_RETRIES      = 3
 BACKOFF_SECS     = 2
@@ -207,7 +208,7 @@ def index():
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "ok", "murf_key_set": bool(API_KEY)})
+    return jsonify({"status": "ok", "murf_key_set": bool(API_KEY), "gemini_key_set": bool(GEMINI_KEY)})
 
 
 @app.route("/api/voices")
@@ -265,16 +266,53 @@ def translate_file():
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
 
 
+# ───────── Gemini AI chatbot helper ───────────────────────────────────────
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+
+def gemini_chat(message: str, history: list) -> str:
+    """Send message + history to Gemini and return the AI reply."""
+    # Build conversation contents from history
+    contents = []
+    for h in history[-10:]:  # keep last 10 turns to stay within limits
+        contents.append({"role": "user", "parts": [{"text": h["user"]}]})
+        contents.append({"role": "model", "parts": [{"text": h["bot"]}]})
+    contents.append({"role": "user", "parts": [{"text": message}]})
+
+    payload = {
+        "contents": contents,
+        "systemInstruction": {
+            "parts": [{"text": (
+                "You are a friendly, helpful AI assistant in the Murf AI Suite. "
+                "Keep your replies concise (1-3 sentences). Be conversational and helpful. "
+                "You can discuss any topic. Reply in English; the system will translate for the user."
+            )}]
+        },
+        "generationConfig": {
+            "maxOutputTokens": 256,
+            "temperature": 0.8,
+        }
+    }
+
+    with httpx.Client(timeout=30) as client:
+        resp = client.post(
+            GEMINI_URL,
+            params={"key": GEMINI_KEY},
+            json=payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+
 @app.route("/api/translate-chat", methods=["POST"])
 def translate_chat():
-    """Single message → translated text + TTS audio URL."""
-    if not API_KEY:
-        return jsonify({"error": "MURF_KEY not configured on server"}), 500
-
+    """User msg -> Gemini AI reply -> Murf translate -> Murf TTS."""
     data = request.get_json(force=True)
     message = data.get("message", "").strip()
     target_lang = data.get("target_lang", "Hindi")
     voice = data.get("voice", "Hindi - Amit (M)")
+    history = data.get("history", [])  # list of {"user": ..., "bot": ...}
 
     if not message:
         return jsonify({"error": "Empty message"}), 400
@@ -284,11 +322,27 @@ def translate_chat():
         return jsonify({"error": f"Unknown voice: {voice}"}), 400
 
     try:
-        translated = translate_single(message, LOCALES[target_lang])
-        audio_url = tts_single(translated, VOICES[voice])
+        # Step 1: Get AI reply from Gemini
+        if GEMINI_KEY:
+            ai_reply = gemini_chat(message, history)
+        else:
+            ai_reply = f"(Gemini not configured) You said: {message}"
+
+        # Step 2: Translate the AI reply with Murf
+        translated = ""
+        if API_KEY:
+            translated = translate_single(ai_reply, LOCALES[target_lang])
+        else:
+            translated = ai_reply  # fallback: no translation
+
+        # Step 3: TTS on the translated text
+        audio_url = ""
+        if API_KEY:
+            audio_url = tts_single(translated, VOICES[voice])
 
         return jsonify({
             "original": message,
+            "ai_reply": ai_reply,
             "translated": translated,
             "audio_url": audio_url,
         })
