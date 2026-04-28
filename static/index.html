@@ -98,10 +98,11 @@
       <!-- ─── Tab 1: File → Speech ─── -->
       <div class="tab-content active" id="file-tab">
         <div class="drop-zone" id="drop-zone">
-          <input type="file" accept=".txt" id="file-input">
+          <input type="file" accept=".txt,.md,.csv,.pdf,.docx,.json,.xml,.log" id="file-input">
           <div class="drop-zone-icon">📁</div>
           <div class="drop-zone-text">
-            <strong>Click or drag</strong> a .txt file here
+            <strong>Click or drag</strong> a file here<br>
+            <small style="color:var(--text-muted)">Supports: TXT, PDF, DOCX, CSV, MD, JSON, XML</small>
           </div>
           <div class="file-name" id="file-name"></div>
         </div>

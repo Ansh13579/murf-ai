@@ -123,12 +123,14 @@ dropZone.addEventListener("drop", (e) => {
 
 function handleFile(file) {
   if (!file) return;
-  if (!file.name.endsWith(".txt")) {
-    toast("Please upload a .txt file", "error");
+  const allowed = [".txt",".md",".csv",".pdf",".docx",".json",".xml",".log",".py",".js",".html"];
+  const ext = "." + file.name.split(".").pop().toLowerCase();
+  if (!allowed.includes(ext)) {
+    toast(`Unsupported format. Use: ${allowed.join(", ")}`, "error");
     return;
   }
   selectedFile = file;
-  fileNameEl.textContent = `📎 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+  fileNameEl.textContent = `\ud83d\udcce ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
   fileSubmit.disabled = false;
   fileResult.classList.remove("visible");
 }
@@ -146,6 +148,7 @@ fileSubmit.addEventListener("click", async () => {
   form.append("file", selectedFile);
   form.append("target_lang", fileTargetDD.value);
   form.append("voice", fileVoiceDD.value);
+  form.append("enable_tts", "true");
 
   try {
     const res  = await fetch(`${API}/api/translate-file`, { method: "POST", body: form });
@@ -153,15 +156,27 @@ fileSubmit.addEventListener("click", async () => {
 
     if (!res.ok) throw new Error(data.error || "Unknown error");
 
+    // Always show translated text
     fileText.textContent = data.translated_text;
-    fileSegCount.textContent = `${data.segments} segments`;
+    const lineCount = data.lines_translated || data.segments || 0;
+    fileSegCount.textContent = `${lineCount} lines translated`;
 
-    // Build audio from base64
-    const audioBlob = base64ToBlob(data.audio_base64, data.audio_mime);
-    fileAudio.src = URL.createObjectURL(audioBlob);
+    // Audio: show player only if TTS succeeded
+    if (data.audio_base64) {
+      const audioBlob = base64ToBlob(data.audio_base64, data.audio_mime);
+      fileAudio.src = URL.createObjectURL(audioBlob);
+      fileAudio.style.display = "block";
+    } else {
+      fileAudio.style.display = "none";
+    }
 
     fileResult.classList.add("visible");
-    toast("Translation complete!", "success");
+
+    if (data.tts_error) {
+      toast(`Translated! (Audio skipped: ${data.tts_error})`, "success");
+    } else {
+      toast("Translation complete!", "success");
+    }
   } catch (e) {
     toast(`Error: ${e.message}`, "error");
   } finally {

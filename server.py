@@ -222,49 +222,107 @@ def voices():
 
 @app.route("/api/translate-file", methods=["POST"])
 def translate_file():
-    """Accept .txt upload → translate → TTS → return JSON with text + audio."""
+    """Accept file upload → extract text → translate → optional TTS."""
     if not API_KEY:
         return jsonify({"error": "MURF_KEY not configured on server"}), 500
 
     uploaded = request.files.get("file")
     target_lang = request.form.get("target_lang", "Hindi")
     voice = request.form.get("voice", "Hindi - Amit (M)")
+    enable_tts = request.form.get("enable_tts", "true") == "true"
 
     if not uploaded:
         return jsonify({"error": "No file uploaded"}), 400
-
-    try:
-        raw_text = uploaded.read().decode("utf-8")
-    except UnicodeDecodeError:
-        return jsonify({"error": "File must be UTF-8 encoded text"}), 400
-
     if target_lang not in LOCALES:
         return jsonify({"error": f"Unknown locale: {target_lang}"}), 400
     if voice not in VOICES:
         return jsonify({"error": f"Unknown voice: {voice}"}), 400
 
+    filename = (uploaded.filename or "").lower()
+
+    # ── Extract text from various formats ──────────────────────────────────
     try:
-        # Translate
+        raw_text = _extract_text(uploaded, filename)
+    except Exception as e:
+        return jsonify({"error": f"Could not read file: {e}"}), 400
+
+    if not raw_text or not raw_text.strip():
+        return jsonify({"error": "File appears to be empty"}), 400
+
+    # Limit to first 50 lines to avoid huge Murf bills / timeouts
+    lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+    if len(lines) > 50:
+        lines = lines[:50]
+        raw_text = "\n".join(lines)
+
+    try:
+        # Step 1: Translate (always)
         lines_tgt = translate_lines(raw_text, LOCALES[target_lang])
         translated_text = "\n".join(lines_tgt)
 
-        # TTS + merge
-        segs = build_segments(lines_tgt)
-        tts_fill(segs, VOICES[voice])
-        mp3_path = merge_mp3(segs)
-
-        # Read and base64-encode the MP3 for JSON transport
-        with open(mp3_path, "rb") as f:
-            audio_b64 = base64.b64encode(f.read()).decode("ascii")
-
-        return jsonify({
+        result = {
             "translated_text": translated_text,
-            "audio_base64": audio_b64,
+            "audio_base64": "",
             "audio_mime": "audio/mpeg",
-            "segments": len(segs),
-        })
+            "segments": 0,
+            "lines_translated": len(lines_tgt),
+        }
+
+        # Step 2: TTS + merge (optional, best-effort)
+        if enable_tts and lines_tgt:
+            try:
+                segs = build_segments(lines_tgt)
+                tts_fill(segs, VOICES[voice])
+                mp3_path = merge_mp3(segs)
+                with open(mp3_path, "rb") as f:
+                    result["audio_base64"] = base64.b64encode(f.read()).decode("ascii")
+                result["segments"] = len(segs)
+            except Exception as tts_err:
+                result["tts_error"] = f"TTS failed: {tts_err} (translation is still available)"
+
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+
+
+def _extract_text(uploaded, filename: str) -> str:
+    """Extract plain text from various file formats."""
+
+    # Plain text formats
+    if filename.endswith((".txt", ".md", ".csv", ".json", ".xml", ".log", ".py", ".js", ".html")):
+        raw = uploaded.read()
+        # Try UTF-8 first, then latin-1 as fallback
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return raw.decode("latin-1")
+
+    # PDF
+    if filename.endswith(".pdf"):
+        try:
+            import PyPDF2
+            reader = PyPDF2.PdfReader(uploaded)
+            pages = [page.extract_text() or "" for page in reader.pages]
+            return "\n".join(pages)
+        except ImportError:
+            raise ValueError("PDF support not installed (PyPDF2)")
+
+    # DOCX (Word)
+    if filename.endswith(".docx"):
+        try:
+            import docx
+            # Save to temp file for python-docx
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
+            tmp.write(uploaded.read())
+            tmp.close()
+            doc = docx.Document(tmp.name)
+            text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            os.unlink(tmp.name)
+            return text
+        except ImportError:
+            raise ValueError("DOCX support not installed (python-docx)")
+
+    raise ValueError(f"Unsupported file format: {filename.rsplit('.', 1)[-1]}. Supported: txt, md, csv, pdf, docx, json, xml, log")
 
 
 # ───────── AI Chatbot helpers (Groq primary, Gemini fallback) ─────────────
