@@ -24,6 +24,7 @@ import httpx
 # ──────────────────────────── CONFIG ────────────────────────────────────────
 API_KEY          = os.getenv("MURF_KEY", "").strip()
 GEMINI_KEY       = os.getenv("GEMINI_KEY", "").strip()
+GROQ_KEY         = os.getenv("GROQ_KEY", "").strip()
 HTTP_TIMEOUT     = 180
 MAX_RETRIES      = 3
 BACKOFF_SECS     = 2
@@ -266,61 +267,80 @@ def translate_file():
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
 
 
-# ───────── Gemini AI chatbot helper ───────────────────────────────────────
+# ───────── AI Chatbot helpers (Groq primary, Gemini fallback) ─────────────
+SYSTEM_PROMPT = (
+    "You are a friendly, helpful AI assistant in the Murf AI Suite. "
+    "Keep your replies concise (1-3 sentences). Be conversational and helpful. "
+    "You can discuss any topic. Reply in English; the system will translate for the user."
+)
+
+GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
+
+def groq_chat(message: str, history: list) -> str:
+    """Chat via Groq (Llama 3.1 8B). Free: 30 req/min, 14400 req/day."""
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for h in history[-10:]:
+        messages.append({"role": "user", "content": h["user"]})
+        messages.append({"role": "assistant", "content": h["bot"]})
+    messages.append({"role": "user", "content": message})
+
+    with httpx.Client(timeout=30) as client:
+        resp = client.post(
+            GROQ_URL,
+            headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+            json={"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": 256, "temperature": 0.8},
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+
+
 def gemini_chat(message: str, history: list) -> str:
-    """Send message + history to Gemini and return the AI reply.
-    Retries up to 3 times on 429 rate-limit errors."""
-    # Build conversation contents from history
+    """Chat via Gemini. Free: 15 req/min."""
     contents = []
-    for h in history[-10:]:  # keep last 10 turns to stay within limits
+    for h in history[-10:]:
         contents.append({"role": "user", "parts": [{"text": h["user"]}]})
         contents.append({"role": "model", "parts": [{"text": h["bot"]}]})
     contents.append({"role": "user", "parts": [{"text": message}]})
 
     payload = {
         "contents": contents,
-        "systemInstruction": {
-            "parts": [{"text": (
-                "You are a friendly, helpful AI assistant in the Murf AI Suite. "
-                "Keep your replies concise (1-3 sentences). Be conversational and helpful. "
-                "You can discuss any topic. Reply in English; the system will translate for the user."
-            )}]
-        },
-        "generationConfig": {
-            "maxOutputTokens": 256,
-            "temperature": 0.8,
-        }
+        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "generationConfig": {"maxOutputTokens": 256, "temperature": 0.8},
     }
+    with httpx.Client(timeout=30) as client:
+        resp = client.post(GEMINI_URL, params={"key": GEMINI_KEY}, json=payload)
+        resp.raise_for_status()
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
-    last_err = None
-    for attempt in range(1, 4):
-        with httpx.Client(timeout=30) as client:
-            resp = client.post(
-                GEMINI_URL,
-                params={"key": GEMINI_KEY},
-                json=payload,
-            )
-            if resp.status_code == 429:
-                last_err = resp.text
-                time.sleep(2 ** attempt)  # 2s, 4s, 8s backoff
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
 
-    raise RuntimeError(f"Gemini rate-limited after 3 retries. Try again in a minute. Details: {last_err[:200]}")
+def ai_chat(message: str, history: list) -> str:
+    """Try Groq first, then Gemini, then return a fallback."""
+    errors = []
+    if GROQ_KEY:
+        try:
+            return groq_chat(message, history)
+        except Exception as e:
+            errors.append(f"Groq: {e}")
+    if GEMINI_KEY:
+        try:
+            return gemini_chat(message, history)
+        except Exception as e:
+            errors.append(f"Gemini: {e}")
+    if errors:
+        raise RuntimeError(" | ".join(errors))
+    return f"(No AI key configured) You said: {message}"
 
 
 @app.route("/api/translate-chat", methods=["POST"])
 def translate_chat():
-    """User msg -> Gemini AI reply -> Murf translate -> Murf TTS."""
+    """User msg -> AI reply -> Murf translate -> Murf TTS."""
     data = request.get_json(force=True)
     message = data.get("message", "").strip()
     target_lang = data.get("target_lang", "Hindi")
     voice = data.get("voice", "Hindi - Amit (M)")
-    history = data.get("history", [])  # list of {"user": ..., "bot": ...}
+    history = data.get("history", [])
 
     if not message:
         return jsonify({"error": "Empty message"}), 400
@@ -330,11 +350,8 @@ def translate_chat():
         return jsonify({"error": f"Unknown voice: {voice}"}), 400
 
     try:
-        # Step 1: Get AI reply from Gemini
-        if GEMINI_KEY:
-            ai_reply = gemini_chat(message, history)
-        else:
-            ai_reply = f"(Gemini not configured) You said: {message}"
+        # Step 1: Get AI reply
+        ai_reply = ai_chat(message, history)
 
         # Step 2: Translate the AI reply with Murf
         translated = ""
